@@ -1,0 +1,34 @@
+{
+  "name": "grist-cross-table-widget",
+  "version": "1.0.0",
+  "description": "Grist widget to join and cross-reference multiple tables with filters and table generation",
+  "main": "index.html",
+  "scripts": {
+    "serve": "npx http-server -c-1 --port 8588 .",
+    "dev": "npx http-server -c-1 --port 8588 -o ."
+  },
+  "grist": {
+    "name": "Cross-Table Explorer",
+    "url": "https://grist-cross-table-widget.vercel.app/index.html",
+    "widgetId": "grist-cross-table-widget",
+    "published": true,
+    "accessLevel": "full",
+    "renderAfterReady": true,
+    "description": "Join multiple tables by a common key, filter and cross-reference data, then generate a result table in Grist. Bilingual FR/EN.",
+    "authors": [
+      {
+        "name": "Said Hamadou"
+      }
+    ],
+    "isGristLabsMaintained": false
+  },
+  "keywords": [
+    "grist",
+    "widget",
+    "cross-table",
+    "join",
+    "filter",
+    "multi-table"
+  ],
+  "license": "Apache-2.0"
+}
