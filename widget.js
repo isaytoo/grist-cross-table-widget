@@ -31,6 +31,9 @@ var i18n = {
     joinTypeLabel: 'Type de jointure :',
     joinInnerDesc: '(correspondances uniquement)',
     joinLeftDesc: '(tout de la 1ère table)',
+    joinInnerHelp: '= uniquement les lignes qui ont une correspondance dans toutes les tables.',
+    joinLeftHelp: '= toutes les lignes de la 1ère table, même sans correspondance (colonnes vides si pas de match).',
+    joinOrderHint: '⚠️ En mode LEFT, la 1ère table sélectionnée (en vert) est la table principale. Toutes ses lignes seront conservées.',
     selectAll: '✓ Tout sélectionner',
     deselectAll: '✗ Tout désélectionner',
     selectCol: '-- Colonne clé --',
@@ -69,6 +72,9 @@ var i18n = {
     selectAllKeys: 'Sélectionnez une colonne clé pour chaque table.',
     selectOneCols: 'Sélectionnez au moins une colonne à afficher.',
     executing: 'Croisement en cours...',
+    newQuery: 'Nouvelle requête',
+    deduplicateLabel: '🧹 Supprimer les doublons',
+    deduplicatedInfo: '{removed} doublons supprimés',
     footerCreated: 'Créé par',
     sortAsc: '↑',
     sortDesc: '↓',
@@ -92,6 +98,9 @@ var i18n = {
     joinTypeLabel: 'Join type:',
     joinInnerDesc: '(matches only)',
     joinLeftDesc: '(all from 1st table)',
+    joinInnerHelp: '= only rows that have a match in all tables.',
+    joinLeftHelp: '= all rows from the 1st table, even without a match (empty columns if no match).',
+    joinOrderHint: '⚠️ In LEFT mode, the 1st selected table (in green) is the main table. All its rows will be kept.',
     selectAll: '✓ Select all',
     deselectAll: '✗ Deselect all',
     selectCol: '-- Key column --',
@@ -130,6 +139,9 @@ var i18n = {
     selectAllKeys: 'Select a key column for each table.',
     selectOneCols: 'Select at least one column to display.',
     executing: 'Joining data...',
+    newQuery: 'New query',
+    deduplicateLabel: '🧹 Remove duplicates',
+    deduplicatedInfo: '{removed} duplicates removed',
     footerCreated: 'Created by',
     sortAsc: '↑',
     sortDesc: '↓',
@@ -266,13 +278,20 @@ var generateMessage = document.getElementById('generate-message');
 // INIT
 // =============================================================================
 
-grist.ready({ requiredAccess: 'full' });
-
 if (!isInsideGrist()) {
   document.getElementById('not-in-grist').classList.remove('hidden');
   document.getElementById('main-content').classList.add('hidden');
 } else {
-  loadTables();
+  (async function init() {
+    try {
+      await grist.ready({ requiredAccess: 'full' });
+      console.log('Cross-Table widget ready with full access');
+      await loadTables();
+    } catch (error) {
+      console.error('Init error:', error);
+      tablesEmpty.classList.remove('hidden');
+    }
+  })();
 }
 
 async function loadTables() {
@@ -304,7 +323,9 @@ function renderTableChips() {
   for (var i = 0; i < allTables.length; i++) {
     var tbl = allTables[i];
     var isSelected = selectedTables.indexOf(tbl) !== -1;
-    html += '<div class="table-chip' + (isSelected ? ' selected' : '') + '" data-table="' + sanitize(tbl) + '" onclick="toggleTable(\'' + sanitize(tbl) + '\')">';
+    var isPrimary = selectedTables[0] === tbl;
+    html += '<div class="table-chip' + (isSelected ? ' selected' : '') + (isPrimary ? ' primary' : '') + '" data-table="' + sanitize(tbl) + '" onclick="toggleTable(\'' + sanitize(tbl) + '\')">';
+    if (isPrimary) html += '<span style="font-size:10px; background:#065f46; color:white; padding:1px 5px; border-radius:4px; margin-right:4px;">①</span>';
     html += '📊 ' + sanitize(tbl);
     html += '<span class="remove" onclick="event.stopPropagation(); removeTable(\'' + sanitize(tbl) + '\')">✕</span>';
     html += '</div>';
@@ -550,6 +571,45 @@ function updateSteps() {
 // JOIN TYPE
 // =============================================================================
 
+function resetAll() {
+  selectedTables = [];
+  tableColumns = {};
+  tableData = {};
+  keyMappings = {};
+  selectedColumns = [];
+  filters = [];
+  joinType = 'inner';
+  joinedData = [];
+  joinedColumns = [];
+  sortCol = null;
+  sortDir = 'asc';
+  generatedTableName = null;
+
+  // Reset UI
+  renderTableChips();
+  stepKeys.classList.add('hidden');
+  stepColumns.classList.add('hidden');
+  stepFilters.classList.add('hidden');
+  stepExecute.classList.add('hidden');
+  stepResults.classList.add('hidden');
+  generateBtn.classList.remove('hidden');
+  refreshBtn.classList.add('hidden');
+  generateMessage.classList.add('hidden');
+  generateTableName.value = '';
+  resultsContainer.innerHTML = '';
+  resultsInfo.innerHTML = '';
+  filtersContainer.innerHTML = '';
+
+  // Reset join type buttons
+  document.querySelectorAll('.join-type-btn').forEach(function(btn) {
+    btn.classList.toggle('active', btn.getAttribute('data-type') === 'inner');
+  });
+
+  // Scroll to top
+  window.scrollTo(0, 0);
+  showToast(t('newQuery') + ' ✓', 'info');
+}
+
 function setJoinType(type) {
   joinType = type;
   document.querySelectorAll('.join-type-btn').forEach(function(btn) {
@@ -572,10 +632,13 @@ async function executeJoin() {
   executeBtn.innerHTML = '<div class="spinner" style="width:14px;height:14px;border-width:2px;"></div> ' + t('executing');
 
   try {
-    // Reload data for all selected tables
+    // Use already loaded data (from loadTableColumns), no need to re-fetch
+    // Only fetch if data is missing
     for (var i = 0; i < selectedTables.length; i++) {
       var tbl = selectedTables[i];
-      tableData[tbl] = await grist.docApi.fetchTable(tbl);
+      if (!tableData[tbl]) {
+        tableData[tbl] = await grist.docApi.fetchTable(tbl);
+      }
     }
 
     // Build index from first table
@@ -584,25 +647,39 @@ async function executeJoin() {
     var primaryData = tableData[primaryTable];
     var primaryIds = primaryData[primaryKey] || [];
 
-    // Build rows from primary table
+    // Build set of needed columns (only selected + key columns) to save memory
+    var neededCols = {};
+    for (var i = 0; i < selectedColumns.length; i++) {
+      neededCols[selectedColumns[i].table + '.' + selectedColumns[i].col] = true;
+    }
+    // Also need key columns for joining
+    for (var i = 0; i < selectedTables.length; i++) {
+      neededCols[selectedTables[i] + '.' + keyMappings[selectedTables[i]]] = true;
+    }
+
+    // Build rows from primary table (only needed columns)
     var rows = [];
+    var primaryCols = (tableColumns[primaryTable] || []).filter(function(c) {
+      return neededCols[primaryTable + '.' + c];
+    });
     for (var i = 0; i < primaryIds.length; i++) {
       var row = {};
       row['__key__'] = String(primaryIds[i]);
-      var cols = tableColumns[primaryTable] || [];
-      for (var c = 0; c < cols.length; c++) {
-        row[primaryTable + '.' + cols[c]] = (primaryData[cols[c]] || [])[i];
+      for (var c = 0; c < primaryCols.length; c++) {
+        row[primaryTable + '.' + primaryCols[c]] = (primaryData[primaryCols[c]] || [])[i];
       }
       rows.push(row);
     }
 
-    // Join with other tables
+    // Join with other tables (only needed columns)
     for (var t_idx = 1; t_idx < selectedTables.length; t_idx++) {
       var tbl = selectedTables[t_idx];
       var tblKey = keyMappings[tbl];
       var tblData = tableData[tbl];
       var tblKeys = tblData[tblKey] || [];
-      var tblCols = tableColumns[tbl] || [];
+      var tblCols = (tableColumns[tbl] || []).filter(function(c) {
+        return neededCols[tbl + '.' + c];
+      });
 
       // Build lookup: key -> array of row indices
       var lookup = {};
@@ -633,10 +710,42 @@ async function executeJoin() {
         }
       }
       rows = newRows;
+
+      // Safety: cap at 50000 rows to avoid memory crash
+      if (rows.length > 50000) {
+        rows = rows.slice(0, 50000);
+        showToast('Résultat limité à 50 000 lignes', 'warning');
+        break;
+      }
     }
 
     // Apply filters
     rows = applyFilters(rows);
+
+    // Deduplicate if checked
+    var deduplicateCheck = document.getElementById('deduplicate-check');
+    if (deduplicateCheck && deduplicateCheck.checked) {
+      var beforeCount = rows.length;
+      var seen = {};
+      var uniqueRows = [];
+      var cols = selectedColumns.map(function(sc) { return sc.table + '.' + sc.col; });
+      for (var r = 0; r < rows.length; r++) {
+        var key = '';
+        for (var c = 0; c < cols.length; c++) {
+          var val = rows[r][cols[c]];
+          key += (val === null || val === undefined ? '' : String(val)) + '|||';
+        }
+        if (!seen[key]) {
+          seen[key] = true;
+          uniqueRows.push(rows[r]);
+        }
+      }
+      rows = uniqueRows;
+      var removed = beforeCount - rows.length;
+      if (removed > 0) {
+        showToast(t('deduplicatedInfo').replace('{removed}', removed), 'info');
+      }
+    }
 
     // Store results
     joinedData = rows;
