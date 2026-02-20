@@ -1,5 +1,5 @@
 {
-  "name": "grist-cross-table-widget",
+  "name": "@isaytoo/cross-table",
   "version": "1.0.0",
   "description": "Grist widget to join and cross-reference multiple tables with filters and table generation",
   "main": "index.html",
@@ -9,8 +9,8 @@
   },
   "grist": {
     "name": "Cross-Table Explorer",
-    "url": "https://grist-cross-table-widget.vercel.app/index.html",
-    "widgetId": "grist-cross-table-widget",
+    "url": "https://gristlabs.github.io/grist-widget/cross-table/",
+    "widgetId": "@isaytoo/widget-cross-table",
     "published": true,
     "accessLevel": "full",
     "renderAfterReady": true,
