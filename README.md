@@ -26,7 +26,7 @@ Widget personnalisé Grist pour croiser et joindre plusieurs tables par une clé
 ### Installation
 
 1. Dans Grist, ajoutez un widget **Personnalisé**
-2. URL : `https://grist-cross-table-widget.vercel.app/index.html`
+2. URL : `https://isaytoo.github.io/grist-cross-table-widget/`
 3. Niveau d'accès : **Accès complet au document**
 
 ### Structure
@@ -62,7 +62,7 @@ Custom Grist widget to cross-reference and join multiple tables by a common key,
 ### Installation
 
 1. In Grist, add a **Custom** widget
-2. URL: `https://grist-cross-table-widget.vercel.app/index.html`
+2. URL: `https://isaytoo.github.io/grist-cross-table-widget/`
 3. Access level: **Full document access**
 
 ### Structure
