@@ -172,6 +172,20 @@ function setLang(lang) {
 // UTILS
 // =============================================================================
 
+// Détecte et formate les timestamps Grist (secondes depuis epoch) en date lisible.
+// Heuristique : nombre entier entre 1980 et 2100, et nom de colonne contient "date" ou "time".
+function formatCellValue(colKey, val) {
+  if (val === null || val === undefined) return null;
+  if (typeof val === 'number' && Number.isInteger(val) && val >= 315576000 && val <= 4102444800) {
+    var colLower = colKey.toLowerCase();
+    if (colLower.indexOf('date') !== -1 || colLower.indexOf('time') !== -1) {
+      var d = new Date(val * 1000);
+      return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+  }
+  return String(val);
+}
+
 function removeAccents(str) {
   var accentsMap = {
     'à': 'a', 'â': 'a', 'ä': 'a', 'á': 'a', 'ã': 'a',
@@ -866,8 +880,9 @@ function renderResults() {
     html += '<tr>';
     for (var c = 0; c < joinedColumns.length; c++) {
       var val = data[r][joinedColumns[c]];
-      var display = (val === null || val === undefined) ? '<span style="color:#cbd5e1;">—</span>' : sanitize(String(val));
-      html += '<td title="' + sanitize(String(val || '')) + '">' + display + '</td>';
+      var formatted = formatCellValue(joinedColumns[c].split('.')[1], val);
+      var display = (formatted === null) ? '<span style="color:#cbd5e1;">—</span>' : sanitize(formatted);
+      html += '<td title="' + sanitize(formatted || '') + '">' + display + '</td>';
     }
     html += '</tr>';
   }
@@ -907,9 +922,10 @@ function exportCsv() {
     var row = [];
     for (var c = 0; c < joinedColumns.length; c++) {
       var val = joinedData[r][joinedColumns[c]];
-      if (val === null || val === undefined) val = '';
+      var formatted = formatCellValue(joinedColumns[c].split('.')[1], val);
+      val = (formatted === null) ? '' : formatted;
       // Escape CSV
-      val = String(val).replace(/"/g, '""');
+      val = val.replace(/"/g, '""');
       if (val.indexOf(',') !== -1 || val.indexOf('"') !== -1 || val.indexOf('\n') !== -1) {
         val = '"' + val + '"';
       }
